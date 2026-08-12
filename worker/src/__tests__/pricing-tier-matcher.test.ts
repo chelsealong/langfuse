@@ -357,6 +357,64 @@ describe("default-model-prices.json", () => {
       matchPricingTier(tiers, { cache_write_tokens: 272001 })?.pricingTierName,
     ).toBe("Large Context (>272K)");
   });
+
+  it("should price GPT-5.4 priority service tier usage", () => {
+    const modelNames = ["gpt-5.4", "gpt-5.4-mini"];
+
+    for (const modelName of modelNames) {
+      const model = defaultModelPrices.find(
+        (candidate) => candidate.modelName === modelName,
+      );
+      expect(model, modelName).toBeDefined();
+
+      for (const tier of model!.pricingTiers) {
+        const prices = tier.prices as Record<string, number>;
+        expect(prices.input_priority, `${modelName}/input_priority`).toBe(
+          prices.input * 2,
+        );
+        expect(
+          prices.input_priority_cache_read,
+          `${modelName}/input_priority_cache_read`,
+        ).toBe(prices.input_cache_read * 2);
+        expect(prices.output_priority, `${modelName}/output_priority`).toBe(
+          prices.output * 2,
+        );
+      }
+    }
+
+    const gpt54 = defaultModelPrices.find(
+      (model) => model.modelName === "gpt-5.4",
+    );
+    expect(gpt54).toBeDefined();
+
+    const tiers: PricingTierWithPrices[] = gpt54!.pricingTiers.map((tier) => ({
+      id: tier.id,
+      name: tier.name,
+      isDefault: tier.isDefault,
+      priority: tier.priority,
+      conditions: tier.conditions,
+      prices: Object.entries(tier.prices).map(([usageType, price]) => ({
+        usageType,
+        price: new Decimal(price),
+      })),
+    }));
+
+    const reportedUsage = {
+      input_priority: 633,
+      input_priority_cache_read: 3328,
+      output_priority: 129,
+      output_priority_reasoning: 0,
+    };
+    const reportedResult = matchPricingTier(tiers, reportedUsage);
+    expect(reportedResult?.pricingTierName).toBe("Standard");
+
+    const reportedCost = Object.entries(reportedUsage).reduce(
+      (total, [usageType, units]) =>
+        total + (reportedResult?.prices[usageType]?.toNumber() ?? 0) * units,
+      0,
+    );
+    expect(reportedCost).toBeCloseTo(0.008699, 12);
+  });
 });
 
 describe("validateRegexPattern", () => {
