@@ -844,6 +844,24 @@ describe("InMemoryFilterService", () => {
       ).toBe(true);
     });
 
+    test("does not match a metadata key that is absent from the object, even with an empty filter value", () => {
+      expect(
+        InMemoryFilterService.evaluateFilter(
+          mockData,
+          [
+            {
+              column: "metadata",
+              type: "stringObject",
+              key: "turn",
+              operator: "contains",
+              value: "",
+            },
+          ],
+          fieldMapper,
+        ),
+      ).toBe(false);
+    });
+
     test("evaluates numberObject filters correctly", () => {
       expect(
         InMemoryFilterService.evaluateFilter(

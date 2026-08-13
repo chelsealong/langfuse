@@ -328,7 +328,16 @@ export class InMemoryFilterService {
     }
 
     // Type assertion is safe here since we've checked typeof fieldValue === "object" above
-    const objectValue = (fieldValue as Record<string, unknown>)[key];
+    const record = fieldValue as Record<string, unknown>;
+    // A missing key never matches, mirroring the ClickHouse `metadata[key]`
+    // lookup used by the DB-backed preview/fallback path (see the `hasKey`
+    // guard in StringObjectFilter). Without this check, `contains ""` would
+    // coerce a missing key to "" and match every trace that lacks it.
+    if (!(key in record)) {
+      return false;
+    }
+
+    const objectValue = record[key];
     const stringValue = objectValue?.toString() || "";
     return this.evaluateStringFilter(stringValue, filterValue, operator);
   }
