@@ -318,39 +318,32 @@ export const queueItemRouter = createTRPCRouter({
           targetId: input.queueId,
         });
       } else {
-        const { count } = await ctx.prisma.annotationQueueItem.createMany({
-          data: input.objectIds.map((objectId) => ({
-            projectId: input.projectId,
-            queueId: input.queueId,
-            objectId,
-            objectType: input.objectType,
-          })),
-          skipDuplicates: true,
-        });
-        createdCount = count;
+        const createdItems =
+          await ctx.prisma.annotationQueueItem.createManyAndReturn({
+            data: input.objectIds.map((objectId) => ({
+              projectId: input.projectId,
+              queueId: input.queueId,
+              objectId,
+              objectType: input.objectType,
+            })),
+            skipDuplicates: true,
+          });
+        createdCount = createdItems.length;
 
-        const createdItems = await ctx.prisma.annotationQueueItem.findMany({
-          where: {
-            projectId: input.projectId,
-            queueId: input.queueId,
-            objectId: { in: input.objectIds },
-            objectType: input.objectType,
-          },
-          orderBy: { createdAt: "desc" },
-        });
-
-        for (const item of createdItems) {
-          await auditLog(
-            {
-              session: ctx.session,
-              resourceType: "annotationQueueItem",
-              resourceId: item.id,
-              action: "create",
-              after: item,
-            },
-            ctx.prisma,
-          );
-        }
+        await Promise.all(
+          createdItems.map((item) =>
+            auditLog(
+              {
+                session: ctx.session,
+                resourceType: "annotationQueueItem",
+                resourceId: item.id,
+                action: "create",
+                after: item,
+              },
+              ctx.prisma,
+            ),
+          ),
+        );
       }
 
       const queue = await ctx.prisma.annotationQueue.findUnique({

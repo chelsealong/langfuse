@@ -123,4 +123,54 @@ describe("annotationQueueItems trpc", () => {
       ).rejects.toThrow("User does not have access to this resource or action");
     });
   });
+
+  describe("createMany", () => {
+    it("only writes create audit logs for rows this call actually inserted", async () => {
+      const setup = await createOrgProjectAndApiKey();
+      orgIds.push(setup.org.id);
+
+      const { caller } = createCallerForProjectRole(setup, "ADMIN");
+      const queue = await prisma.annotationQueue.create({
+        data: {
+          name: "Test Queue",
+          description: "Test Queue Description",
+          scoreConfigIds: [],
+          projectId: setup.project.id,
+        },
+      });
+
+      // Simulate an item that already exists in the queue, e.g. added by a
+      // prior call, before the mutation under test ever runs.
+      const preExistingObjectId = uuidv4();
+      const preExistingItem = await prisma.annotationQueueItem.create({
+        data: {
+          queueId: queue.id,
+          objectId: preExistingObjectId,
+          objectType: AnnotationQueueObjectType.TRACE,
+          projectId: setup.project.id,
+        },
+      });
+
+      const newObjectId = uuidv4();
+      const result = await caller.annotationQueueItems.createMany({
+        projectId: setup.project.id,
+        queueId: queue.id,
+        objectIds: [preExistingObjectId, newObjectId],
+        objectType: AnnotationQueueObjectType.TRACE,
+      });
+
+      const auditLogs = await prisma.auditLog.findMany({
+        where: {
+          projectId: setup.project.id,
+          resourceType: "annotationQueueItem",
+          action: "create",
+        },
+      });
+
+      expect(auditLogs).toHaveLength(result.createdCount);
+      expect(auditLogs.map((log) => log.resourceId)).not.toContain(
+        preExistingItem.id,
+      );
+    });
+  });
 });
